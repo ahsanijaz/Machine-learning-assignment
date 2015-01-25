@@ -1,0 +1,104 @@
+---
+title: "Machine learning Assignment"
+author: "Ahsan Ijaz"
+date: "26/01/2015"
+output: html_document
+---
+
+# Synopsis:
+
+This project looks at the dataset provided by <http://groupware.les.inf.puc-rio.br/har#ixzz3PrfxNdSB> for Human Activity Recognition (HAR). The data used analyzed has 5 classes (sitting-down, standing-up, standing, walking, and sitting) collected on 8 hours of activities of 4 healthy subjects. The process used for classification consists of data pruning of columns containing too few valid values, filtering through by removing near zero variance predictors, data transformation using principal component analysis with a threshold variance capture of 90%, and finally selecting the model using random forest trees. The algorithm is accurate 94% of the time with almost the same accuracy on test data. 
+
+# Data Processing:
+
+The used libraries are loaded as:
+```{r,echo=TRUE}
+library(caret)
+library(dplyr)
+library(plyr)
+```
+
+The training and testing data is fetched using the following commands, junk values are set as NA.
+
+```{r,echo=TRUE}
+trainingData<-read.csv("/home/ahsan/Personal/RRpro1//MLproject/pml-training.csv",na.strings=c("","NA","#DIV/0!"))
+testingData <- read.csv("/home/ahsan/Personal/RRpro1//MLproject/pml-testing.csv",na.strings=c("","NA","#DIV/0!"))
+```
+
+Next we find near zero variance predictors and remove them from both the training and test data sets:
+```{r,echo=TRUE}
+nzv <- nearZeroVar(trainingData)
+filteredTrainingData <- trainingData[, -nzv]
+testingData <- testingData[,-nzv]
+dim(filteredTrainingData)
+```
+
+As seen from description, the predictors corresponding to information of user name, indices and time stamps is removed from both training and test sets.
+
+```{r,echo=TRUE}
+filteredTrainingData <- filteredTrainingData %>%
+  select(-user_name,-raw_timestamp_part_1,-raw_timestamp_part_2,-cvtd_timestamp,-num_window,-X)
+filteredTrainingData1 <- filteredTrainingData[,colSums(is.na(filteredTrainingData))==0]
+
+testingData <- testingData %>%
+  select(-user_name,-raw_timestamp_part_1,-raw_timestamp_part_2,-cvtd_timestamp,-num_window,-X)
+testingData <- testingData[,colSums(is.na(filteredTrainingData))==0]
+
+```
+
+The variables are all numeric so the class of these variables is changed as follows:
+```{r,echo=TRUE}
+for(i in 1:(length(filteredTrainingData1)-1))
+  filteredTrainingData1[,i] <- as.numeric(filteredTrainingData1[,i])
+
+for(i in 1:(length(testingData)-1))
+  testingData[,i] <- as.numeric(testingData[,i])
+```
+
+Next, we divide the data from the training set into train and test data for finding out of sample error.
+
+```{r,echo=TRUE}
+
+inTrain<-createDataPartition(y=filteredTrainingData1$classe,p=0.5,list=FALSE)
+training<-filteredTrainingData1[inTrain,]
+test<-filteredTrainingData1[-inTrain,]
+```
+
+Next, we find the principal components spanning a variance of 90% of the data. After which the test and train data is transformed using the following code:
+
+```{r,echo=TRUE}
+preProc <- preProcess(training[,-length(training)],method="pca",thresh = 0.90)
+trainPC <- predict(preProc,training[,-length(training)])
+modelFit <- train(training$classe ~ .,method="rf",data=trainPC,trControl=trainControl(method="cv",number = 5),prox=TRUE)
+```
+
+# Results
+
+The test set is also transformed using the pricipal components obtained through training data. Prediction metrics along with the confusion matrix is shown as follows:
+```{r,echo=TRUE}
+testPC <- predict(preProc,test[,-length(test)])
+modFit.RF.PCA.predict<-predict(modelFit$finalModel,testPC, type="class")
+
+confusionMatrix(modFit.RF.PCA.predict,test$classe)
+```
+
+# Project Submission:
+
+The project submission was done using the same transformations and model with 19 out of 20 correct values predicted whereas the files were generated using the following code:
+
+```{r,echo=TRUE}
+
+testNPC <- predict(preProc,testingData[,-length(testingData)])
+modFit.RF.PCA.predict<-predict(modelFit$finalModel,testNPC, type="class")
+
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+```
+
+
